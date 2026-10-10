@@ -4,25 +4,70 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { createClient } from "@/app/utils/supabase/Client";
 
 export default function SignUpPage() {
   const router = useRouter();
+  const supabase = createClient();
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isVendor, setIsVendor] = useState(false);
   const [emailError, setEmailError] = useState("");
+  const [generalError, setGeneralError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setEmailError("");
+    setGeneralError("");
+
     const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedEmail.endsWith("@pau.edu.ng")) {
-      setEmailError("Please use your official university email.");
+
+    // Student email validation constraint
+    if (!isVendor && !trimmedEmail.endsWith("@pau.edu.ng")) {
+      setEmailError("Student accounts must use an official @pau.edu.ng email address.");
       return;
     }
-    setEmailError("");
-    router.push("/menu");
+
+    setLoading(true);
+
+    const role = isVendor ? "vendor" : "student";
+
+    // 1. Sign up user in Supabase Auth
+    const { data: authData, error: signUpError } = await supabase.auth.signUp({
+      email: trimmedEmail,
+      password,
+    });
+
+    if (signUpError) {
+      setGeneralError(signUpError.message);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Explicitly insert profile record to public.profiles table
+    if (authData.user) {
+      const { error: profileError } = await supabase.from("profiles").insert({
+        id: authData.user.id,
+        email: trimmedEmail,
+        role: role,
+        sub_role: "standard",
+        full_name: fullName,
+      });
+
+      if (profileError) {
+        setGeneralError(`Profile creation failed: ${profileError.message}`);
+        setLoading(false);
+        return;
+      }
+    }
+
+    setLoading(false);
+    // Redirect to confirmation page
+    router.push("/auth/verify-email");
   };
 
   return (
@@ -54,6 +99,12 @@ export default function SignUpPage() {
           Join PAU&apos;s campus food network.
         </p>
 
+        {generalError && (
+          <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-[#FF2B2B]">
+            {generalError}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Full Name */}
           <div>
@@ -71,10 +122,10 @@ export default function SignUpPage() {
             />
           </div>
 
-          {/* PAU Email */}
+          {/* Email */}
           <div>
             <label htmlFor="email" className="block text-xs font-medium text-slate-600 mb-1.5">
-              PAU Email
+              {isVendor ? "Vendor Email" : "PAU Email"}
             </label>
             <input
               id="email"
@@ -85,7 +136,7 @@ export default function SignUpPage() {
                 setEmail(e.target.value);
                 if (emailError) setEmailError("");
               }}
-              placeholder="name@pau.edu.ng"
+              placeholder={isVendor ? "vendor@business.com" : "name@pau.edu.ng"}
               className={`w-full px-4 py-3 bg-[#F8FAFC] rounded-xl border text-[#1E293B] placeholder-slate-400 text-sm focus:outline-none transition-all ${
                 emailError
                   ? "border-[#FF2B2B] focus:ring-2 focus:ring-red-100 focus:border-[#FF2B2B]"
@@ -154,9 +205,10 @@ export default function SignUpPage() {
           {/* Submit */}
           <button
             type="submit"
-            className="w-full py-3.5 rounded-xl text-sm font-semibold text-white bg-[#377EE9] hover:bg-[#2f6fd4] active:bg-[#2860b8] transition-colors mt-2 cursor-pointer"
+            disabled={loading}
+            className="w-full py-3.5 rounded-xl text-sm font-semibold text-white bg-[#377EE9] hover:bg-[#2f6fd4] active:bg-[#2860b8] transition-colors mt-2 cursor-pointer disabled:opacity-50"
           >
-            Create Account
+            {loading ? "Creating Account..." : "Create Account"}
           </button>
         </form>
 

@@ -4,16 +4,57 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { createClient } from "@/app/utils/supabase/Client";
 
 export default function LoginPage() {
   const router = useRouter();
+  const supabase = createClient();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [generalError, setGeneralError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    router.push("/menu");
+    setGeneralError("");
+    setLoading(true);
+
+    const trimmedEmail = email.trim().toLowerCase();
+
+    // 1. Sign in with Supabase Auth
+    const { data: authData, error: signInError } =
+      await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
+
+    if (signInError) {
+      setGeneralError(signInError.message);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Fetch user profile to route appropriately based on role
+    if (authData.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", authData.user.id)
+        .single();
+
+      setLoading(false);
+
+      if (profile?.role === "vendor") {
+        router.push("@/app/vendor/dashboard");
+      } else {
+        router.push("/menu");
+      }
+    } else {
+      setLoading(false);
+      router.push("/menu");
+    }
   };
 
   return (
@@ -42,14 +83,23 @@ export default function LoginPage() {
           Welcome back
         </h1>
         <p className="text-sm text-slate-500 mb-7">
-          Sign in with your PAU credentials.
+          Log in to access your account.
         </p>
+
+        {generalError && (
+          <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-[#FF2B2B]">
+            {generalError}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Email */}
           <div>
-            <label htmlFor="email" className="block text-xs font-medium text-slate-600 mb-1.5">
-              School Email
+            <label
+              htmlFor="email"
+              className="block text-xs font-medium text-slate-600 mb-1.5"
+            >
+              Email Address
             </label>
             <input
               id="email"
@@ -57,7 +107,7 @@ export default function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@pau.edu.ng"
+              placeholder="name@pau.edu.ng or vendor@business.com"
               className="w-full px-4 py-3 bg-[#F8FAFC] rounded-xl border border-slate-200 text-[#1E293B] placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#377EE9]/20 focus:border-[#377EE9] transition-all"
             />
           </div>
@@ -65,12 +115,18 @@ export default function LoginPage() {
           {/* Password */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label htmlFor="password" className="block text-xs font-medium text-slate-600">
+              <label
+                htmlFor="password"
+                className="block text-xs font-medium text-slate-600"
+              >
                 Password
               </label>
-              <button type="button" className="text-xs text-[#377EE9] font-medium hover:underline">
+              <Link
+                href="/auth/forgot-password"
+                className="text-xs font-medium text-[#377EE9] hover:underline"
+              >
                 Forgot password?
-              </button>
+              </Link>
             </div>
             <div className="relative">
               <input
@@ -88,7 +144,11 @@ export default function LoginPage() {
                 className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
               </button>
             </div>
           </div>
@@ -96,9 +156,10 @@ export default function LoginPage() {
           {/* Submit */}
           <button
             type="submit"
-            className="w-full py-3.5 rounded-xl text-sm font-semibold text-white bg-[#377EE9] hover:bg-[#2f6fd4] active:bg-[#2860b8] transition-colors mt-2 cursor-pointer"
+            disabled={loading}
+            className="w-full py-3.5 rounded-xl text-sm font-semibold text-white bg-[#377EE9] hover:bg-[#2f6fd4] active:bg-[#2860b8] transition-colors mt-2 cursor-pointer disabled:opacity-50"
           >
-            Log In
+            {loading ? "Logging in..." : "Log In"}
           </button>
         </form>
 
