@@ -13,7 +13,12 @@ import {
   Bell,
   MapPin,
   LogOut,
+  Smartphone,
+  Download,
+  CheckCircle2,
+  Share,
 } from "lucide-react";
+import { usePWAInstall } from "@/lib/usePWAInstall";
 
 const CAMPUS_BUILDINGS = [
   "SST Building (Ground Floor)",
@@ -35,6 +40,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const supabase = createClient();
   const { isRiderMode, toggleRiderMode } = useApp();
+  const { isInstallable, isInstalled, isIOS, installApp } = usePWAInstall();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [selectedBuilding, setSelectedBuilding] = useState("SST Building (Ground Floor)");
@@ -331,6 +337,55 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
+        </section>
+
+        {/* Progressive Web App (PWA) Card */}
+        <section className="bg-white border border-slate-200 rounded-3xl p-5 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-blue-50 text-[#377EE9] flex items-center justify-center">
+                <Smartphone className="w-5 h-5 stroke-[2.2]" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[#1E293B]">
+                  pickNdrop Mobile App
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {isInstalled
+                    ? "Installed & running in standalone mode"
+                    : "Add to home screen for offline dining & instant access"}
+                </p>
+              </div>
+            </div>
+
+            {isInstalled ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Installed
+              </span>
+            ) : isInstallable ? (
+              <button
+                type="button"
+                onClick={installApp}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-[#377EE9] hover:bg-blue-600 active:scale-95 transition-all shadow-xs cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Install</span>
+              </button>
+            ) : null}
+          </div>
+
+          {!isInstalled && isIOS && (
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 text-xs text-slate-600 space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-[#1E293B]">
+                <Share className="w-3.5 h-3.5 text-[#377EE9]" />
+                <span>iOS Installation Guide</span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Tap the Safari <strong>Share</strong> button at the bottom of the screen, scroll down, and select <strong>&quot;Add to Home Screen&quot;</strong>.
+              </p>
+            </div>
+          )}
         </section>
 
         {/* Security & Sign Out */}

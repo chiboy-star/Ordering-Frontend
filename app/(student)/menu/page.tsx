@@ -10,12 +10,11 @@ import {
   ArrowRight,
   Sparkles,
   ShoppingBag,
-  Plus,
-  Minus,
 } from "lucide-react";
 import { getRandomGreeting, getDefaultGreeting } from "@/lib/greetings";
-import { useApp } from "@/context/AppContext";
+import { useApp, MENU_ITEMS } from "@/context/AppContext";
 import { createClient } from "@/app/utils/supabase/Client";
+import FoodCard, { FoodProduct } from "@/components/FoodCard";
 
 const CATEGORIES = ["All", "Food", "Snacks", "Drinks"];
 
@@ -38,6 +37,7 @@ export default function StorefrontPage() {
     cart,
     addToCart,
     removeFromCart,
+    registerProducts,
     totalCartCount,
     totalCartPrice,
     userName: defaultUserName,
@@ -83,7 +83,7 @@ export default function StorefrontPage() {
     loadUserDataAndProducts();
   }, [supabase]);
 
-  // Fetch real products from Supabase
+  // Fetch real products from Supabase with safe MENU_ITEMS fallback
   const fetchStoreProducts = async () => {
     try {
       const { data, error } = await supabase
@@ -92,11 +92,46 @@ export default function StorefrontPage() {
         .eq("available", true)
         .order("created_at", { ascending: false });
 
-      if (!error && data) {
+      if (!error && data && data.length > 0) {
         setDbProducts(data);
+        registerProducts(
+          data.map((p) => ({
+            id: p.id,
+            name: p.name,
+            price: Number(p.price),
+            category: p.category,
+            vendor_id: p.vendor_id,
+            image: p.image_url,
+            stock_quantity: p.stock_quantity,
+          }))
+        );
+      } else {
+        // Fallback to campus menu items if DB is empty/unseeded
+        const fallback: DbProduct[] = MENU_ITEMS.map((m) => ({
+          id: m.id,
+          name: m.name,
+          price: m.price,
+          category: m.category,
+          stock_quantity: m.remainingQuota,
+          image_url: m.image,
+          available: true,
+          vendor_id: "campus-vendor",
+        }));
+        setDbProducts(fallback);
       }
     } catch (err) {
-      console.error("Error loading store products:", err);
+      console.error("Error loading store products, using local fallback:", err);
+      const fallback: DbProduct[] = MENU_ITEMS.map((m) => ({
+        id: m.id,
+        name: m.name,
+        price: m.price,
+        category: m.category,
+        stock_quantity: m.remainingQuota,
+        image_url: m.image,
+        available: true,
+        vendor_id: "campus-vendor",
+      }));
+      setDbProducts(fallback);
     } finally {
       setLoadingProducts(false);
     }
@@ -147,6 +182,7 @@ export default function StorefrontPage() {
                     ? "bg-blue-50 text-[#377EE9]"
                     : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
                 }`}
+                aria-label="Toggle search"
               >
                 <Search className="w-4 h-4" />
               </button>
@@ -159,6 +195,7 @@ export default function StorefrontPage() {
                     ? "border-2 border-[#10B981] bg-emerald-50 text-emerald-600 hover:bg-emerald-100/70"
                     : "border-2 border-[#377EE9] bg-blue-50 text-[#377EE9] hover:bg-blue-100/70"
                 }`}
+                aria-label={isRiderMode ? "Switch to Buyer mode" : "Switch to Rider mode"}
               >
                 {isRiderMode ? (
                   <>
@@ -249,8 +286,11 @@ export default function StorefrontPage() {
         )}
 
         {loadingProducts ? (
-          <div className="py-20 text-center text-sm text-slate-400">
-            Loading menu items from store...
+          <div className="py-24 text-center space-y-3">
+            <div className="w-8 h-8 border-3 border-[#377EE9] border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-xs sm:text-sm text-slate-400 font-medium">
+              Loading fresh cafeteria menu...
+            </p>
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="py-20 text-center max-w-sm mx-auto space-y-3">
@@ -276,91 +316,43 @@ export default function StorefrontPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5">
-            {filteredItems.map((product) => {
-              const qtyInCart = cart[product.id] || 0;
-
-              return (
-                <div
-                  key={product.id}
-                  className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col justify-between"
-                >
-                  <div>
-                    {/* Product Image */}
-                    <div className="relative w-full h-36 sm:h-40 bg-slate-100 overflow-hidden">
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                      />
-                      {product.stock_quantity <= 5 && product.stock_quantity > 0 && (
-                        <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-bold shadow-xs">
-                          Only {product.stock_quantity} left
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Product Info */}
-                    <div className="p-3 sm:p-4">
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#377EE9] bg-blue-50 px-2 py-0.5 rounded-md">
-                          {product.category}
-                        </span>
-                      </div>
-                      <h3 className="text-xs sm:text-sm font-extrabold text-[#1E293B] line-clamp-1 mb-1">
-                        {product.name}
-                      </h3>
-                      <p className="text-xs sm:text-sm font-black text-[#1E293B]">
-                        ₦{Number(product.price).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Cart Action Footer */}
-                  <div className="p-3 sm:p-4 pt-0">
-                    {qtyInCart === 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => addToCart(product.id)}
-                        className="w-full py-2 px-3 rounded-xl bg-[#377EE9] hover:bg-blue-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-98"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Add to Cart</span>
-                      </button>
-                    ) : (
-                      <div className="flex items-center justify-between bg-slate-100 rounded-xl p-1">
-                        <button
-                          type="button"
-                          onClick={() => removeFromCart(product.id)}
-                          className="w-8 h-8 rounded-lg bg-white text-slate-700 hover:bg-slate-200 flex items-center justify-center shadow-xs transition-colors cursor-pointer"
-                        >
-                          <Minus className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="text-xs font-extrabold text-[#1E293B]">
-                          {qtyInCart}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => addToCart(product.id)}
-                          className="w-8 h-8 rounded-lg bg-[#377EE9] text-white hover:bg-blue-600 flex items-center justify-center shadow-xs transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {filteredItems.map((product) => (
+              <FoodCard
+                key={product.id}
+                product={{
+                  id: product.id,
+                  name: product.name,
+                  price: product.price,
+                  category: product.category,
+                  stock_quantity: product.stock_quantity,
+                  image_url: product.image_url,
+                  available: product.available,
+                  vendor_id: product.vendor_id,
+                }}
+                quantityInCart={cart[product.id] || 0}
+                onAddToCart={(p: FoodProduct) =>
+                  addToCart(p.id, {
+                    name: p.name,
+                    price: p.price,
+                    category: p.category,
+                    image: p.image_url || p.image,
+                    vendor_id: p.vendor_id,
+                    stock_quantity: p.stock_quantity,
+                  })
+                }
+                onRemoveFromCart={(p: FoodProduct) => removeFromCart(p.id)}
+              />
+            ))}
           </div>
         )}
       </main>
 
       {/* ===== FLOATING QUICK CART BANNER ===== */}
       {totalCartCount > 0 && (
-        <div className="fixed bottom-20 left-0 right-0 z-30 px-4 sm:px-6 max-w-md sm:max-w-lg mx-auto pointer-events-none">
+        <div className="fixed bottom-20 left-0 right-0 z-40 px-4 sm:px-6 max-w-md sm:max-w-lg mx-auto pointer-events-none">
           <Link
             href="/checkout"
-            className="pointer-events-auto flex items-center justify-between py-3 px-4.5 rounded-2xl bg-[#1E293B] text-white shadow-xl hover:bg-slate-800 transition-all active:scale-[0.99] border border-slate-700/50"
+            className="pointer-events-auto flex items-center justify-between py-3.5 px-5 rounded-2xl bg-[#1E293B] text-white shadow-xl hover:bg-black transition-all active:scale-[0.98] border border-slate-700/50"
           >
             <div className="flex items-center gap-2.5">
               <span className="w-6 h-6 rounded-full bg-[#377EE9] flex items-center justify-center text-xs font-black shadow-sm">

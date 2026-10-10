@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { createClient } from "@/app/utils/supabase/Client";
@@ -58,48 +59,59 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-[#1E293B] flex items-center justify-center px-5 py-10">
-      <div className="w-full max-w-md animate-page-enter">
-        {/* Back link */}
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-600 transition-colors mb-8"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Home</span>
-        </Link>
+    <div className="min-h-screen bg-white text-[#1E293B] relative overflow-hidden flex flex-col items-center justify-center px-5 py-10 selection:bg-[#0400FF] selection:text-white">
+      {/* ========================================================= */}
+      {/* HERO GRADIENT AURA (Matching Landing Page Vibe) */}
+      {/* ========================================================= */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 w-full max-w-[500px] h-[400px] overflow-visible -z-0"
+      >
+        <div className="w-[320px] sm:w-[420px] h-[280px] sm:h-[320px] mx-auto rounded-full bg-gradient-to-r from-[#F472B6] via-[#C084FC] to-[#93C5FD] opacity-65 blur-3xl transform -translate-y-6" />
+      </div>
 
-        {/* Brand */}
-        <div className="flex items-center gap-2.5 mb-8">
-          <div className="w-8 h-8 rounded-lg bg-[#377EE9] flex items-center justify-center text-white font-bold text-sm">
-            p
-          </div>
-          <span className="text-lg font-bold tracking-tight text-[#1E293B]">
-            pickNdrop
-          </span>
+      <div className="w-full max-w-[360px] sm:max-w-[400px] relative z-10 animate-page-enter">
+        {/* Back Link */}
+        <div className="text-left mb-6">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-slate-700 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Home</span>
+          </Link>
         </div>
 
-        <h1 className="text-2xl font-bold text-[#1E293B] mb-1">
-          Welcome back
-        </h1>
-        <p className="text-sm text-slate-500 mb-7">
-          Log in to access your account.
-        </p>
+        {/* Logo at the top center (/Donut_BLUE.png) */}
+        <div className="flex justify-center mb-8">
+          <Link href="/" className="hover:scale-105 transition-transform duration-300">
+            <Image
+              src="/Donut_BLUE.png"
+              alt="pickNdrop logo"
+              width={1043}
+              height={1621}
+              priority
+              className="w-13 h-20 sm:w-15 sm:h-23 object-contain drop-shadow-sm"
+            />
+          </Link>
+        </div>
 
+        {/* Error Alert */}
         {generalError && (
-          <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-[#FF2B2B]">
+          <div className="mb-5 p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs font-medium text-[#FF2B2B] shadow-sm animate-in fade-in duration-200">
             {generalError}
           </div>
         )}
 
+        {/* Form matching mockup input styling */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Email */}
           <div>
             <label
               htmlFor="email"
-              className="block text-xs font-medium text-slate-600 mb-1.5"
+              className="block text-xs sm:text-sm font-semibold text-slate-800 mb-1.5 text-left"
             >
-              Email Address
+              Email
             </label>
             <input
               id="email"
@@ -108,7 +120,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@pau.edu.ng or vendor@business.com"
-              className="w-full px-4 py-3 bg-[#F8FAFC] rounded-xl border border-slate-200 text-[#1E293B] placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#377EE9]/20 focus:border-[#377EE9] transition-all"
+              className="w-full px-4 py-3.5 bg-[#F8FAFC] rounded-2xl border border-slate-100 shadow-[0_4px_16px_rgba(0,0,0,0.05)] text-[#1E293B] placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#0400FF]/20 focus:border-[#0400FF] focus:bg-white transition-all"
             />
           </div>
 
@@ -117,13 +129,13 @@ export default function LoginPage() {
             <div className="flex items-center justify-between mb-1.5">
               <label
                 htmlFor="password"
-                className="block text-xs font-medium text-slate-600"
+                className="block text-xs sm:text-sm font-semibold text-slate-800 text-left"
               >
                 Password
               </label>
               <Link
                 href="/auth/forgot-password"
-                className="text-xs font-medium text-[#377EE9] hover:underline"
+                className="text-[11px] font-semibold text-[#0400FF] hover:underline"
               >
                 Forgot password?
               </Link>
@@ -136,12 +148,12 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
-                className="w-full px-4 py-3 pr-11 bg-[#F8FAFC] rounded-xl border border-slate-200 text-[#1E293B] placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#377EE9]/20 focus:border-[#377EE9] transition-all"
+                className="w-full px-4 py-3.5 pr-11 bg-[#F8FAFC] rounded-2xl border border-slate-100 shadow-[0_4px_16px_rgba(0,0,0,0.05)] text-[#1E293B] placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#0400FF]/20 focus:border-[#0400FF] focus:bg-white transition-all"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                 aria-label={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? (
@@ -153,19 +165,28 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3.5 rounded-xl text-sm font-semibold text-white bg-[#377EE9] hover:bg-[#2f6fd4] active:bg-[#2860b8] transition-colors mt-2 cursor-pointer disabled:opacity-50"
-          >
-            {loading ? "Logging in..." : "Log In"}
-          </button>
+          {/* Submit Button (Electric Blue) */}
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 sm:py-4 rounded-2xl text-sm font-bold text-white bg-[#0400FF] hover:bg-[#0300d6] active:scale-95 transition-all cursor-pointer shadow-lg shadow-blue-600/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            >
+              {loading ? (
+                <div className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Logging in...</span>
+                </div>
+              ) : (
+                "Log in"
+              )}
+            </button>
+          </div>
         </form>
 
-        <p className="text-sm text-slate-500 text-center mt-8">
+        <p className="text-xs sm:text-sm text-slate-500 text-center mt-7">
           Don&apos;t have an account?{" "}
-          <Link href="/auth/signup" className="font-semibold text-[#377EE9]">
+          <Link href="/auth/signup" className="font-bold text-[#0400FF] hover:underline">
             Sign up
           </Link>
         </p>
