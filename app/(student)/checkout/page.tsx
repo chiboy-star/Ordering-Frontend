@@ -14,16 +14,11 @@ import {
   ArrowRight,
 } from "lucide-react";
 
+import { useApp, MENU_ITEMS } from "@/context/AppContext";
+
 type FulfillmentType = "eat-in" | "self-pickup" | "peer-delivery";
 
-interface CartItem {
-  id: string;
-  name: string;
-  price: number;
-  quantity: number;
-}
-
-const MOCK_CART_ITEMS: CartItem[] = [
+const FALLBACK_CART_ITEMS = [
   { id: "item-1", name: "Jollof Rice & Chicken", price: 1500, quantity: 1 },
   { id: "item-6", name: "Chilled Zobo Juice", price: 400, quantity: 1 },
 ];
@@ -39,12 +34,31 @@ const DROP_OFF_LOCATIONS = [
 ];
 
 export default function CheckoutPage() {
+  const { cart, clearCart } = useApp();
   const [fulfillment, setFulfillment] = useState<FulfillmentType>("eat-in");
   const [dropoffLocation, setDropoffLocation] = useState(DROP_OFF_LOCATIONS[0]);
   const [deliveryNote, setDeliveryNote] = useState("");
   const [orderConfirmed, setOrderConfirmed] = useState(false);
 
-  const subtotal = MOCK_CART_ITEMS.reduce(
+  // Compute active cart items from AppContext, fallback to default if empty
+  const activeCartItems = React.useMemo(() => {
+    const items = Object.entries(cart)
+      .map(([id, qty]) => {
+        const menuItem = MENU_ITEMS.find((m) => m.id === id);
+        if (!menuItem) return null;
+        return {
+          id,
+          name: menuItem.name,
+          price: menuItem.price,
+          quantity: qty,
+        };
+      })
+      .filter(Boolean) as { id: string; name: string; price: number; quantity: number }[];
+
+    return items.length > 0 ? items : FALLBACK_CART_ITEMS;
+  }, [cart]);
+
+  const subtotal = activeCartItems.reduce(
     (s, i) => s + i.price * i.quantity,
     0
   );
@@ -83,7 +97,7 @@ export default function CheckoutPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-white text-[#1E293B] animate-page-enter">
+    <div className="min-h-screen bg-white text-[#1E293B] pb-28 animate-page-enter">
       <div className="max-w-3xl mx-auto px-5 sm:px-8 py-5 sm:py-8">
         {/* Header */}
         <div className="flex items-center justify-between pb-5 border-b border-slate-100">
@@ -153,7 +167,7 @@ export default function CheckoutPage() {
                 Your order
               </h2>
               <div className="divide-y divide-slate-100">
-                {MOCK_CART_ITEMS.map((item) => (
+                {activeCartItems.map((item) => (
                   <div
                     key={item.id}
                     className="flex items-center justify-between py-3"
@@ -297,8 +311,11 @@ export default function CheckoutPage() {
             {/* Submit Button */}
             <button
               type="button"
-              onClick={() => setOrderConfirmed(true)}
-              className="w-full py-4 rounded-2xl text-sm font-semibold text-white bg-[#377EE9] hover:bg-[#2f6fd4] active:bg-[#2860b8] transition-colors cursor-pointer flex items-center justify-center gap-2"
+              onClick={() => {
+                setOrderConfirmed(true);
+                clearCart();
+              }}
+              className="w-full py-4 rounded-2xl text-sm font-semibold text-white bg-[#377EE9] hover:bg-[#2f6fd4] active:bg-[#2860b8] transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
             >
               <span>Pay ₦{total.toLocaleString()}</span>
               <ArrowRight className="w-4 h-4" />
