@@ -13,6 +13,16 @@ export interface MenuItem {
   prepTime: string;
 }
 
+export interface CartProductMeta {
+  id: string;
+  name: string;
+  price: number;
+  category?: string;
+  vendor_id?: string;
+  image?: string;
+  stock_quantity?: number;
+}
+
 export const MENU_ITEMS: MenuItem[] = [
   {
     id: "item-1",
@@ -51,7 +61,7 @@ export const MENU_ITEMS: MenuItem[] = [
     id: "item-4",
     name: "Peppered Grilled Chicken",
     price: 1200,
-    category: "Proteins",
+    category: "Food",
     vendor: "Main Quad Cafeteria",
     remainingQuota: 7,
     image:
@@ -104,6 +114,23 @@ export const MENU_ITEMS: MenuItem[] = [
   },
 ];
 
+// Initial default catalog populated from MENU_ITEMS
+const DEFAULT_CATALOG: Record<string, CartProductMeta> = MENU_ITEMS.reduce(
+  (acc, item) => {
+    acc[item.id] = {
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      category: item.category,
+      vendor_id: "campus-vendor",
+      image: item.image,
+      stock_quantity: item.remainingQuota,
+    };
+    return acc;
+  },
+  {} as Record<string, CartProductMeta>
+);
+
 export interface ToastInfo {
   message: string;
   mode: "rider" | "buyer" | "info";
@@ -114,7 +141,9 @@ interface AppContextType {
   setIsRiderMode: (val: boolean) => void;
   toggleRiderMode: () => void;
   cart: Record<string, number>;
-  addToCart: (id: string) => void;
+  productCatalog: Record<string, CartProductMeta>;
+  registerProducts: (products: CartProductMeta[]) => void;
+  addToCart: (id: string, meta?: Partial<CartProductMeta>) => void;
   removeFromCart: (id: string) => void;
   clearCart: () => void;
   totalCartCount: number;
@@ -133,18 +162,26 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [isRiderMode, setIsRiderMode] = useState<boolean>(false);
   const [cart, setCart] = useState<Record<string, number>>({});
+  const [productCatalog, setProductCatalog] = useState<Record<string, CartProductMeta>>(DEFAULT_CATALOG);
   const [userName] = useState<string>("Paul");
   const [toast, setToast] = useState<ToastInfo | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isActiveOrderOpen, setIsActiveOrderOpen] = useState<boolean>(false);
 
-  // Sync cart and rider status from/to localStorage if in browser
+  // Sync cart, catalog, and rider status from/to localStorage if in browser
   useEffect(() => {
     try {
       const savedCart = localStorage.getItem("pickndrop_cart");
       if (savedCart) {
         setCart(JSON.parse(savedCart));
       }
+
+      const savedCatalog = localStorage.getItem("pickndrop_catalog");
+      if (savedCatalog) {
+        const parsed = JSON.parse(savedCatalog);
+        setProductCatalog((prev) => ({ ...prev, ...parsed }));
+      }
+
       const savedRider = localStorage.getItem("pickndrop_rider");
       if (savedRider !== null) {
         setIsRiderMode(savedRider === "true");
@@ -153,6 +190,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
   }, []);
+
+  const registerProducts = (products: CartProductMeta[]) => {
+    setProductCatalog((prev) => {
+      const updated = { ...prev };
+      for (const p of products) {
+        updated[p.id] = { ...updated[p.id], ...p };
+      }
+      try {
+        localStorage.setItem("pickndrop_catalog", JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+  };
 
   const showToast = (message: string, mode: "rider" | "buyer" | "info" = "info") => {
     setToast({ message, mode });
@@ -185,13 +237,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const addToCart = (id: string) => {
+  const addToCart = (id: string, meta?: Partial<CartProductMeta>) => {
+    // If metadata provided, register it immediately
+    if (meta) {
+      setProductCatalog((prevCatalog) => {
+        const updatedCatalog = {
+          ...prevCatalog,
+          [id]: {
+            ...prevCatalog[id],
+            id,
+            name: meta.name || prevCatalog[id]?.name || "Item",
+            price: meta.price !== undefined ? meta.price : (prevCatalog[id]?.price ?? 0),
+            category: meta.category || prevCatalog[id]?.category,
+            vendor_id: meta.vendor_id || prevCatalog[id]?.vendor_id || "campus-vendor",
+            image: meta.image || prevCatalog[id]?.image,
+            stock_quantity: meta.stock_quantity ?? prevCatalog[id]?.stock_quantity,
+          },
+        };
+        try {
+          localStorage.setItem("pickndrop_catalog", JSON.stringify(updatedCatalog));
+        } catch {
+          // ignore
+        }
+        return updatedCatalog;
+      });
+    }
+
     setCart((prev) => {
-      const item = MENU_ITEMS.find((m) => m.id === id);
+      const product = (meta as CartProductMeta) || productCatalog[id] || MENU_ITEMS.find((m) => m.id === id);
+      const stock = product?.stock_quantity ?? (product as MenuItem)?.remainingQuota;
       const current = prev[id] || 0;
-      if (item && current >= item.remainingQuota) {
+
+      if (stock !== undefined && stock > 0 && current >= stock) {
         return prev;
       }
+
       const updated = { ...prev, [id]: current + 1 };
       try {
         localStorage.setItem("pickndrop_cart", JSON.stringify(updated));
@@ -237,11 +317,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const totalCartPrice = useMemo(
     () =>
-      Object.entries(cart).reduce((s, [id, c]) => {
-        const item = MENU_ITEMS.find((m) => m.id === id);
-        return s + (item ? item.price * c : 0);
+      Object.entries(cart).reduce((sum, [id, qty]) => {
+        const item = productCatalog[id] || MENU_ITEMS.find((m) => m.id === id);
+        const itemPrice = item ? Number(item.price) : 0;
+        return sum + itemPrice * qty;
       }, 0),
-    [cart]
+    [cart, productCatalog]
   );
 
   return (
@@ -251,6 +332,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setIsRiderMode,
         toggleRiderMode,
         cart,
+        productCatalog,
+        registerProducts,
         addToCart,
         removeFromCart,
         clearCart,
