@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useApp } from "@/context/AppContext";
+import { createClient } from "@/app/utils/supabase/Client";
 import {
   ChevronLeft,
   ShieldCheck,
@@ -10,13 +12,7 @@ import {
   Wallet,
   Bell,
   MapPin,
-  Moon,
-  CreditCard,
   LogOut,
-  ChevronRight,
-  Sparkles,
-  Award,
-  CheckCircle2,
 } from "lucide-react";
 
 const CAMPUS_BUILDINGS = [
@@ -29,11 +25,75 @@ const CAMPUS_BUILDINGS = [
   "Female Hostel Block B",
 ];
 
+interface ProfileData {
+  full_name?: string;
+  phone_number?: string;
+  role?: string;
+}
+
 export default function SettingsPage() {
-  const { isRiderMode, toggleRiderMode, userName } = useApp();
+  const router = useRouter();
+  const supabase = createClient();
+  const { isRiderMode, toggleRiderMode } = useApp();
+
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [selectedBuilding, setSelectedBuilding] = useState("SST Building (Ground Floor)");
   const [isBuildingPickerOpen, setIsBuildingPickerOpen] = useState(false);
+
+  // User Profile State
+  const [userEmail, setUserEmail] = useState("student@pau.edu.ng");
+  const [profile, setProfile] = useState<ProfileData>({
+    full_name: "",
+    phone_number: "",
+    role: "",
+  });
+  const [loadingProfile, setLoadingProfile] = useState(true);
+
+  // Fetch real profile from Supabase
+  useEffect(() => {
+    async function loadUserProfile() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (user) {
+          if (user.email) setUserEmail(user.email);
+
+          const { data, error } = await supabase
+            .from("profiles")
+            .select("full_name, phone_number, role")
+            .eq("id", user.id)
+            .maybeSingle();
+
+          if (!error && data) {
+            setProfile(data);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching user settings profile:", err);
+      } finally {
+        setLoadingProfile(false);
+      }
+    }
+
+    loadUserProfile();
+  }, [supabase]);
+
+  // Compute initials dynamically (e.g., "Clinton" -> "CL", "Paul Adeyemi" -> "PA")
+  const userInitials = React.useMemo(() => {
+    if (!profile.full_name) return "PA";
+    const parts = profile.full_name.trim().split(" ");
+    if (parts.length >= 2) {
+      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    }
+    return parts[0].slice(0, 2).toUpperCase();
+  }, [profile.full_name]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/auth/login");
+  };
 
   return (
     <div className="min-h-screen bg-white text-[#1E293B] pb-28 animate-page-enter">
@@ -66,7 +126,7 @@ export default function SettingsPage() {
                   : "bg-[#377EE9] ring-4 ring-blue-400/20"
               }`}
             >
-              PA
+              {userInitials}
               <span
                 className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-[10px] text-white ${
                   isRiderMode ? "bg-emerald-500" : "bg-[#377EE9]"
@@ -79,7 +139,7 @@ export default function SettingsPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base sm:text-lg font-extrabold text-[#1E293B] truncate">
-                  Paul Adeyemi
+                  {loadingProfile ? "Loading..." : profile.full_name || "Campus Student"}
                 </h2>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#377EE9] border border-blue-100">
                   <ShieldCheck className="w-3 h-3 text-[#377EE9]" />
@@ -88,14 +148,16 @@ export default function SettingsPage() {
               </div>
 
               <p className="text-xs text-slate-500 mt-0.5 truncate">
-                p.adeyemi@pau.edu.ng
+                {userEmail}
               </p>
 
               <div className="flex items-center gap-2 mt-2 text-[11px] font-medium text-slate-500 flex-wrap">
-                <span className="font-mono bg-white px-2 py-0.5 rounded-md border border-slate-200/80 text-[#1E293B]">
-                  Matric: 21/0458
+                <span className="font-mono bg-white px-2 py-0.5 rounded-md border border-slate-200/80 text-[#1E293B] capitalize">
+                  Role: {profile.role || "student"}
                 </span>
-                <span>• SST (Computer Science)</span>
+                {profile.phone_number && (
+                  <span>Phone: {profile.phone_number}</span>
+                )}
               </div>
             </div>
           </div>
@@ -202,7 +264,7 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={() => setIsBuildingPickerOpen(!isBuildingPickerOpen)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-[#377EE9] bg-blue-50 hover:bg-blue-100 transition-colors"
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-[#377EE9] bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer"
                 >
                   Change
                 </button>
@@ -276,17 +338,18 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between py-1">
             <span className="text-xs text-slate-400">App Version</span>
             <span className="text-xs font-mono font-medium text-slate-600">
-              v1.2.0 (iOS Web Shell)
+              v1.2.0 (PAU Web PWA)
             </span>
           </div>
 
-          <Link
-            href="/auth/login"
-            className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl text-xs font-bold text-red-500 hover:text-red-600 hover:bg-red-50 transition-colors border border-red-100 mt-2"
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl text-xs font-bold text-red-500 hover:text-red-600 hover:bg-red-50 transition-colors border border-red-100 mt-2 cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             <span>Sign Out from Campus Device</span>
-          </Link>
+          </button>
         </section>
       </div>
     </div>
