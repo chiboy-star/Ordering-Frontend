@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Utensils,
@@ -12,16 +12,22 @@ import {
   FileText,
   Clock,
   ArrowRight,
+  CreditCard,
+  XCircle,
+  Loader2,
 } from "lucide-react";
-
-import { useApp, MENU_ITEMS } from "@/context/AppContext";
+import { useApp } from "@/context/AppContext";
+import { createClient } from "@/app/utils/supabase/Client";
 
 type FulfillmentType = "eat-in" | "self-pickup" | "peer-delivery";
 
-const FALLBACK_CART_ITEMS = [
-  { id: "item-1", name: "Jollof Rice & Chicken", price: 1500, quantity: 1 },
-  { id: "item-6", name: "Chilled Zobo Juice", price: 400, quantity: 1 },
-];
+interface CartProductItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  vendor_id: string;
+}
 
 const DROP_OFF_LOCATIONS = [
   "SST Building (Ground Floor)",
@@ -34,37 +40,150 @@ const DROP_OFF_LOCATIONS = [
 ];
 
 export default function CheckoutPage() {
+  const supabase = createClient();
   const { cart, clearCart } = useApp();
+
   const [fulfillment, setFulfillment] = useState<FulfillmentType>("eat-in");
   const [dropoffLocation, setDropoffLocation] = useState(DROP_OFF_LOCATIONS[0]);
   const [deliveryNote, setDeliveryNote] = useState("");
   const [orderConfirmed, setOrderConfirmed] = useState(false);
+  const [generatedToken, setGeneratedToken] = useState("");
+  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [cartProducts, setCartProducts] = useState<CartProductItem[]>([]);
 
-  // Compute active cart items from AppContext, fallback to default if empty
-  const activeCartItems = React.useMemo(() => {
-    const items = Object.entries(cart)
-      .map(([id, qty]) => {
-        const menuItem = MENU_ITEMS.find((m) => m.id === id);
-        if (!menuItem) return null;
-        return {
-          id,
-          name: menuItem.name,
-          price: menuItem.price,
-          quantity: qty,
-        };
-      })
-      .filter(Boolean) as { id: string; name: string; price: number; quantity: number }[];
+  // Simulation Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [simulatingStatus, setSimulatingStatus] = useState<"success" | "failure" | null>(null);
+  const [simMsg, setSimMsg] = useState("");
 
-    return items.length > 0 ? items : FALLBACK_CART_ITEMS;
-  }, [cart]);
+  // Fetch cart details on mount
+  useEffect(() => {
+    async function fetchCartDetails() {
+      const productIds = Object.keys(cart);
+      if (productIds.length === 0) {
+        setCartProducts([]);
+        setLoadingProducts(false);
+        return;
+      }
 
-  const subtotal = activeCartItems.reduce(
-    (s, i) => s + i.price * i.quantity,
-    0
-  );
+      try {
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, name, price, vendor_id")
+          .in("id", productIds);
+
+        if (!error && data) {
+          const mapped = data.map((item) => ({
+            id: item.id,
+            name: item.name,
+            price: Number(item.price),
+            quantity: cart[item.id] || 1,
+            vendor_id: item.vendor_id,
+          }));
+          setCartProducts(mapped);
+        }
+      } catch (err) {
+        console.error("Error loading cart product info:", err);
+      } finally {
+        setLoadingProducts(false);
+      }
+    }
+
+    fetchCartDetails();
+  }, [cart, supabase]);
+
+  const subtotal = cartProducts.reduce((s, i) => s + i.price * i.quantity, 0);
   const packFee = fulfillment === "eat-in" ? 0 : 100;
   const deliveryFee = fulfillment === "peer-delivery" ? 500 : 0;
   const total = subtotal + packFee + deliveryFee;
+
+  const handleSimulatedPaymentResult = async (status: "success" | "failure") => {
+    setSimulatingStatus(status);
+    if (status === "success") {
+      setSimMsg("Connecting to Secure Payment Gateway...");
+    } else {
+      setSimMsg("Authorizing transaction...");
+    }
+
+    // Artificial delay to simulate bank processing spinner
+    setTimeout(async () => {
+      if (status === "failure") {
+        setIsModalOpen(false);
+        setSimulatingStatus(null);
+        setSimMsg("");
+        alert("Payment Failed: Insufficient funds or card declined. Please try again.");
+        return;
+      }
+
+      // Success path: Create order in Supabase
+      setSimMsg("Payment Approved! Dispatched to Kitchen...");
+      
+      setTimeout(async () => {
+        try {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+
+          if (!user) {
+            alert("You must be logged in to place an order.");
+            setIsModalOpen(false);
+            setSimulatingStatus(null);
+            return;
+          }
+
+          const vendorId = cartProducts[0]?.vendor_id;
+          const tokenString = `#PND-${Math.floor(100 + Math.random() * 900)}`;
+
+          // 1. Insert into orders table
+          const { data: orderData, error: orderError } = await supabase
+            .from("orders")
+            .insert({
+              student_id: user.id,
+              vendor_id: vendorId,
+              fulfillment_type: fulfillment,
+              dropoff_location: fulfillment === "peer-delivery" ? dropoffLocation : null,
+              delivery_note: deliveryNote || null,
+              subtotal,
+              pack_fee: packFee,
+              delivery_fee: deliveryFee,
+              total,
+              status: "Paid",
+              token: tokenString,
+            })
+            .select()
+            .single();
+
+          if (orderError) throw new Error(orderError.message);
+
+          // 2. Insert line items into order_items table
+          const orderItemsPayload = cartProducts.map((item) => ({
+            order_id: orderData.id,
+            product_id: item.id,
+            quantity: item.quantity,
+            price: item.price,
+          }));
+
+          const { error: itemsError } = await supabase
+            .from("order_items")
+            .insert(orderItemsPayload);
+
+          if (itemsError) throw new Error(itemsError.message);
+
+          setGeneratedToken(tokenString);
+          setOrderConfirmed(true);
+          clearCart();
+        } catch (err: any) {
+          console.error("Order submission error:", err);
+          alert(err.message || "Failed to submit order.");
+        } finally {
+          setIsModalOpen(false);
+          setSimulatingStatus(null);
+          setSimMsg("");
+        }
+      }, 1000);
+    }, 1200);
+  };
 
   const fulfillmentOptions: {
     key: FulfillmentType;
@@ -119,17 +238,15 @@ export default function CheckoutPage() {
               <CheckCircle2 className="w-7 h-7" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-[#1E293B]">
-                Order placed!
-              </h2>
+              <h2 className="text-xl font-bold text-[#1E293B]">Order placed!</h2>
               <p className="text-sm text-slate-500 mt-1">
-                Your kitchen ticket was dispatched.
+                Your simulated payment was successful & ticket was dispatched.
               </p>
             </div>
             <div className="p-4 rounded-2xl bg-[#F8FAFC] text-left space-y-2.5 text-sm">
               <div className="flex justify-between">
                 <span className="text-slate-500">Token</span>
-                <span className="font-mono font-bold">#PND-884</span>
+                <span className="font-mono font-bold">{generatedToken}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Mode</span>
@@ -159,6 +276,21 @@ export default function CheckoutPage() {
               <span>Back to Menu</span>
             </Link>
           </div>
+        ) : loadingProducts ? (
+          <div className="py-20 text-center text-sm text-slate-400">
+            Loading cart summary...
+          </div>
+        ) : cartProducts.length === 0 ? (
+          <div className="py-20 text-center space-y-4 max-w-sm mx-auto">
+            <h2 className="text-base font-bold text-[#1E293B]">Your cart is empty</h2>
+            <p className="text-xs text-slate-400">Add items from the store menu to proceed with checkout.</p>
+            <Link
+              href="/menu"
+              className="inline-block py-3 px-6 rounded-xl text-xs font-semibold text-white bg-[#377EE9]"
+            >
+              Go to Menu
+            </Link>
+          </div>
         ) : (
           <div className="py-6 space-y-7">
             {/* Order Summary */}
@@ -167,11 +299,8 @@ export default function CheckoutPage() {
                 Your order
               </h2>
               <div className="divide-y divide-slate-100">
-                {activeCartItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between py-3"
-                  >
+                {cartProducts.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between py-3">
                     <div>
                       <span className="text-sm font-semibold text-[#1E293B]">
                         {item.name}
@@ -308,18 +437,73 @@ export default function CheckoutPage() {
               </div>
             </section>
 
-            {/* Submit Button */}
+            {/* Pay Button -> Triggers Simulator Modal */}
             <button
               type="button"
-              onClick={() => {
-                setOrderConfirmed(true);
-                clearCart();
-              }}
+              onClick={() => setIsModalOpen(true)}
               className="w-full py-4 rounded-2xl text-sm font-semibold text-white bg-[#377EE9] hover:bg-[#2f6fd4] active:bg-[#2860b8] transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-sm"
             >
               <span>Pay ₦{total.toLocaleString()}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
+          </div>
+        )}
+
+        {/* ===== SIMULATED PAYMENT MODAL ===== */}
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs px-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-5 text-center">
+              <div className="w-12 h-12 bg-blue-50 rounded-2xl mx-auto flex items-center justify-center text-[#377EE9]">
+                <CreditCard className="w-6 h-6" />
+              </div>
+
+              <div>
+                <h3 className="text-base font-bold text-[#1E293B]">
+                  Simulate Gateway Payment
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Choose a simulation outcome for ₦{total.toLocaleString()}
+                </p>
+              </div>
+
+              {simulatingStatus ? (
+                <div className="py-6 space-y-3">
+                  <Loader2 className="w-8 h-8 text-[#377EE9] animate-spin mx-auto" />
+                  <p className="text-xs font-semibold text-slate-600 animate-pulse">
+                    {simMsg}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSimulatedPaymentResult("success")}
+                    className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Simulate Successful Payment</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSimulatedPaymentResult("failure")}
+                    className="w-full py-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer border border-red-200"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    <span>Simulate Failed Payment</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={Boolean(simulatingStatus)}
+                    onClick={() => setIsModalOpen(false)}
+                    className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold transition-all cursor-pointer mt-2"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

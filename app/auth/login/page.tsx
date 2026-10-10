@@ -47,7 +47,7 @@ export default function LoginPage() {
       setLoading(false);
 
       if (profile?.role === "vendor") {
-        router.push("@/app/vendor/dashboard");
+        router.push("/vendor/dashboard");
       } else {
         router.push("/menu");
       }
